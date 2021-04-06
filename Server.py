@@ -1,38 +1,56 @@
-import socket
-import threading
-
-HEADER=64 
-PORT=5050
-SERVER=socket.gethostbyname(socket.gethostname())
-ADDR=(SERVER,PORT)
-FORMAT='utf-8'
-DISCONNECT_MESSAGE="!DISCONNECT"
-
-server=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-server.bind(ADDR)
+from socket import AF_INET, socket, SOCK_STREAM
+from threading import Thread
 
 
-
-def handle_client(conn,addr):
-    print(f"[NEW CONNECTION] {addr} connected.")
-    connected=True
-    while connected:
-        msg_length=conn.recv(HEADER).decode(FORMAT)
-        if msg_length:
-            msg_length=int(msg_length)
-            msg=conn.recv(msg_length).decode(FORMAT)
-            if msg==DISCONNECT_MESSAGE:
-                connected=False
-            print(f"[{addr}] {msg}")
-    conn.close()
-def start():
-    server.listen()
-    print(f"[LISTENING] Server is listing on {SERVER}")
+def accept_incoming_connections():
     while True:
-        conn,addr =server.accept()
-        thread=threading.Thread(target=handle_client,args=(conn,addr))
-        thread.start()
-        print(f"[ACTIVE CONNECTIONS] {threading.activeCount()-1}")
+        client, client_address = SERVER.accept()
+        print("%s:%s has connected." % client_address)
+        client.send(bytes("Nhập tên của bạn rồi bắt đầu chat!", "utf8"))
+        addresses[client] = client_address
+        Thread(target=handle_client, args=(client,)).start()
 
-print("[STARTING]Server is starting...")
-start()
+
+def handle_client(client):  # Takes client socket as argument.
+    name = client.recv(BUFSIZ).decode("utf8")
+    welcome = 'Xin chào %s! Nếu bạn muốn thoát gõ, {quit} để thoát.' % name
+    client.send(bytes(welcome, "utf8"))
+    msg = "%s đã tham gia phòng chat!" % name
+    broadcast(bytes(msg, "utf8"))
+    clients[client] = name
+
+    while True:
+        msg = client.recv(BUFSIZ)
+        if msg != bytes("{quit}", "utf8"):
+            broadcast(msg, name + ": ")
+        else:
+            client.send(bytes("{quit}", "utf8"))
+            client.close()
+            del clients[client]
+            broadcast(bytes("%s đã thoát phòng chat." % name, "utf8"))
+            break
+
+
+def broadcast(msg, prefix=""):  # prefix is for name identification.
+    for sock in clients:
+        sock.send(bytes(prefix, "utf8") + msg)
+
+
+clients = {}
+addresses = {}
+
+HOST = '192.168.1.165'
+PORT = 33000
+BUFSIZ = 1024
+ADDR = (HOST, PORT)
+
+SERVER = socket(AF_INET, SOCK_STREAM)
+SERVER.bind(ADDR)
+
+if __name__ == "__main__":
+    SERVER.listen(5)
+    print("Chờ kết nối từ các client...")
+    ACCEPT_THREAD = Thread(target=accept_incoming_connections)
+    ACCEPT_THREAD.start()
+    ACCEPT_THREAD.join()
+    SERVER.close()
